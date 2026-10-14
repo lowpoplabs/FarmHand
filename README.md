@@ -15,6 +15,10 @@ The wage is paid at the [Public Works](https://github.com/lowpoplabs/PublicWorks
 when that plugin is installed, so the island keeps a single payment desk. Without it, the
 plugin takes scrap by command and works on its own.
 
+<!-- lpl:links -->
+**[Download v0.21.2](https://github.com/lowpoplabs/FarmHand/releases/latest)** · **Flyer:** [web](https://lowpoplabs.github.io/flyers/FarmHand.html) / [PDF](FarmHand-Flyer.pdf) · **[Changelog](CHANGELOG.md)** · **[Ko-fi](https://ko-fi.com/lowpoplabs)**
+<!-- /lpl:links -->
+
 ## How to use (in-game)
 
 1. Stand in your base where the farm hand should wait, inside the range of a tool cupboard
