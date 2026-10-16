@@ -26,6 +26,10 @@ Stock caps and a takings box. Deployed to a live server; not yet seen in game.
   a tick had left a small stack per cow filling the fridge.
 - Selling and skimming take the smallest stacks first, so fragments are used up rather
   than made.
+- **Milk is collected in a plain output box and only full stacks go into the fridge.**
+  Fresh milk outside a fridge has no fridge time and stacks freely for hours, so cows on
+  different clocks (poor yield genes mean a longer cooldown and a smaller yield) no longer
+  leave a small stack each. Cream still comes from milk that has aged in the fridge.
 - The streak warning in the log counts the same *job* repeating, not the same group: a
   stockman only ever does the animals group, so the old count warned about honest work.
 

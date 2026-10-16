@@ -1838,11 +1838,45 @@ namespace Oxide.Plugins
 
         private static List<BaseCombatEntity> OutputsFor(List<BaseCombatEntity> outputs, ItemDefinition def)
         {
-            if (Spoils(def)) return outputs;   // already fridges first
+            // Milk is the exception among things that spoil: the game will not stack milk
+            // whose fridge time differs by a few minutes, so a fridge fills with small
+            // stacks, one per milking. Fresh milk in a plain box has no fridge time and
+            // stacks freely, so it is collected there and only full stacks go to the fridge
+            // (the dairy job below). Cream still comes from fridge milk.
+            if (Spoils(def) && !(def.shortname == MilkShortname && HasPlainBox(outputs))) return outputs;   // fridges first
             var ordered = new List<BaseCombatEntity>(outputs.Count);
             foreach (var box in outputs) if (!(box is Fridge)) ordered.Add(box);
             foreach (var box in outputs) if (box is Fridge) ordered.Add(box);
             return ordered;
+        }
+
+        private static bool HasPlainBox(List<BaseCombatEntity> outputs)
+        {
+            foreach (var box in outputs) if (!(box is Fridge)) return true;
+            return false;
+        }
+
+        // Full stacks of milk in the plain boxes go into the fridge, where they keep and
+        // age for the cream. Partial stacks stay out, where the next round's milk can join them.
+        private Job DairyJob(LiveHand liveHand, BasePlayer npc, List<BaseCombatEntity> outputs)
+        {
+            var fridges = new List<BaseCombatEntity>();
+            foreach (var box in outputs) if (box is Fridge) fridges.Add(box);
+            if (fridges.Count == 0) return null;
+            foreach (var box in outputs)
+            {
+                if (box is Fridge) continue;
+                var inventory = InventoryOf(box);
+                if (inventory == null) continue;
+                foreach (var item in inventory.itemList)
+                {
+                    if (item == null || item.info.shortname != MilkShortname || item.amount < item.info.stackable) continue;
+                    if (!AnyRoom(fridges, item.info, item.amount)) continue;
+                    var stack = item;
+                    return new Job { Name = "DairyJob#1", Spot = Beside(box, npc), Do = () => MoveSome(stack, fridges) };
+                }
+            }
+            return null;
         }
 
         private static bool AnyRoom(List<BaseCombatEntity> outputs, ItemDefinition def, int amount)
@@ -2054,6 +2088,7 @@ namespace Oxide.Plugins
                         if (hand.Chickens && (job = CoopJob(liveHand, hand, npc, outputs, supply, liquid, 1)) != null) return job;
                         if (hand.Livestock && (job = TroughJob(liveHand, hand, npc, supply, liquid, compost, outputs, 1)) != null) return job;
                         if (hand.Honey && (job = HoneyJob(liveHand, hand, npc, outputs)) != null) return job;
+                        if (hand.Livestock && (job = DairyJob(liveHand, npc, outputs)) != null) return job;
                         break;
                     case "planting":
                         if (hand.Replant && supply != null && (job = PlantingJob(liveHand, hand, npc, supply, outputs)) != null) return job;
