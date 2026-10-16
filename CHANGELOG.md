@@ -20,6 +20,12 @@ Stock caps and a takings box. Deployed to a live server; not yet seen in game.
   output boxes, so the vendor's metal and fuel stop crowding the harvest.
 
 ### Changed
+- **Milking in rounds** — every cow that is ready is milked in one go, with rounds no closer
+  than five minutes (config), so a round's milk is created together and stacks. The game
+  refuses to stack milk whose fridge time differs by more than three minutes, and one cow
+  a tick had left a small stack per cow filling the fridge.
+- Selling and skimming take the smallest stacks first, so fragments are used up rather
+  than made.
 - The streak warning in the log counts the same *job* repeating, not the same group: a
   stockman only ever does the animals group, so the old count warned about honest work.
 

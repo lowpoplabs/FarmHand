@@ -469,6 +469,9 @@ namespace Oxide.Plugins
 
             [JsonProperty("Farthest livestock vendor (Ranch, Large Barn) the farm hand will walk to (meters)")]
             public float VendorRange = 5000f;
+
+            [JsonProperty("Seconds between milking rounds (the whole herd is milked together, so the milk stacks)")]
+            public float MilkRoundSeconds = 300f;
         }
 
         protected override void LoadDefaultConfig() => config = new Configuration();
@@ -537,6 +540,7 @@ namespace Oxide.Plugins
             public bool Chickens = true, Honey = true, FetchWater = true, Livestock = true, Biofuel = true;
 
             public int Trips;
+            public double LastMilkRound;
             public bool MarketRuns = true, BuySeeds = true;
             public int KeepProduce = 20;      // of each produce, kept at home
             [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
@@ -2372,11 +2376,16 @@ namespace Oxide.Plugins
                     if (cupboard != null && animal.GetBuildingPrivilege() != cupboard) continue;
                     if (!animal.TrustsToHandle(npc)) continue;
 
+                    // Milking is done in rounds: every cow that is ready, one after the other
+                    // in the same job, so the round's milk is created together and stacks
+                    // (the game will not stack milk whose fridge time differs by more than
+                    // a few minutes, and one cow a tick left a stack per cow).
                     var cow = animal as Rust.Ai.Gen2.Cow;
-                    if (cow != null && cow.MilkDef != null && cow.CanBeMilked(npc) && !AtCap(hand, outputs, cow.MilkDef.shortname) && AnyRoom(outputs, cow.MilkDef, cow.MilkedAmount()))
+                    if (cow != null && cow.MilkDef != null && cow.CanBeMilked(npc) && !AtCap(hand, outputs, cow.MilkDef.shortname)
+                        && Now - hand.LastMilkRound >= Mathf.Max(0f, config.MilkRoundSeconds) && AnyRoom(outputs, cow.MilkDef, cow.MilkedAmount()))
                     {
                         var theCow = cow;
-                        return new Job { Name = "TroughJob#4", Spot = Beside(cow, npc), Do = () => Milk(hand, npc, theCow, outputs) };
+                        return new Job { Name = "TroughJob#4", Spot = Beside(cow, npc), Do = () => MilkRound(hand, npc, liveHand, cupboard, theCow, outputs) };
                     }
 
                     var sheep = animal as Rust.Ai.Gen2.Sheep;
@@ -2449,6 +2458,23 @@ namespace Oxide.Plugins
                 try { stored = animal.StoredSecondsFor(npc.userID); } catch { continue; }
                 if (stored >= full) continue;
                 try { animal.AddFamiliarity(npc.userID, tick); } catch { }
+            }
+        }
+
+        private void MilkRound(FarmData hand, BasePlayer npc, LiveHand liveHand, BuildingPrivlidge cupboard, Rust.Ai.Gen2.Cow first, List<BaseCombatEntity> outputs)
+        {
+            hand.LastMilkRound = Now;
+            Milk(hand, npc, first, outputs);
+            var animals = new List<Rust.Ai.Gen2.LivestockAnimal>();
+            Vis.Entities(liveHand.Home, FarmRadius, animals);
+            foreach (var animal in animals)
+            {
+                var cow = animal as Rust.Ai.Gen2.Cow;
+                if (cow == null || cow == first || cow.IsDestroyed || cow.IsDead() || !cow.IsLeadable || cow.MilkDef == null) continue;
+                if (cupboard != null && cow.GetBuildingPrivilege() != cupboard) continue;
+                if (!cow.TrustsToHandle(npc) || !cow.CanBeMilked(npc)) continue;
+                if (AtCap(hand, outputs, cow.MilkDef.shortname) || !AnyRoom(outputs, cow.MilkDef, cow.MilkedAmount())) break;
+                Milk(hand, npc, cow, outputs);
             }
         }
 
@@ -3110,6 +3136,7 @@ namespace Oxide.Plugins
 
         private Item ReadyMilk(List<BaseCombatEntity> boxes)
         {
+            Item smallest = null;
             var creamDef = ItemManager.FindItemDefinition(CreamShortname);
             var skimmedDef = ItemManager.FindItemDefinition(SkimmedMilkShortname);
             foreach (var box in boxes)
@@ -3125,10 +3152,10 @@ namespace Oxide.Plugins
                     bool ready;
                     try { ready = option.actionTarget.CanDoAction(item, null); }
                     catch { ready = false; }
-                    if (ready) return item;
+                    if (ready && (smallest == null || item.amount < smallest.amount)) smallest = item;   // fragments first
                 }
             }
-            return null;
+            return smallest;
         }
 
         private void Skim(BasePlayer npc, Item milk, List<BaseCombatEntity> outputs)
@@ -3479,7 +3506,11 @@ namespace Oxide.Plugins
                 }
             }
             // The lesser form of a pooled produce goes first.
-            items.Sort((a, b) => (a.info.shortname == PoolOf(a.info.shortname) ? 1 : 0).CompareTo(b.info.shortname == PoolOf(b.info.shortname) ? 1 : 0));
+            items.Sort((a, b) =>
+            {
+                int form = (a.info.shortname == PoolOf(a.info.shortname) ? 1 : 0).CompareTo(b.info.shortname == PoolOf(b.info.shortname) ? 1 : 0);
+                return form != 0 ? form : a.amount.CompareTo(b.amount);   // small stacks go whole, so fragments are used up, not made
+            });
             var spare = new Dictionary<string, int>();
             foreach (var pair in totals) spare[pair.Key] = Mathf.Max(0, pair.Value - KeepOf(hand, pair.Key));
             var load = new List<Item>();
