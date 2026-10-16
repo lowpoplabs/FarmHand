@@ -19,6 +19,10 @@ Stock caps and a takings box. Deployed to a live server; not yet seen in game.
   scrap from the market and whatever the livestock vendor pays go there instead of the
   output boxes, so the vendor's metal and fuel stop crowding the harvest.
 
+### Changed
+- The streak warning in the log counts the same *job* repeating, not the same group: a
+  stockman only ever does the animals group, so the old count warned about honest work.
+
 ## [0.21.2] — 2026-10-13
 
 First public release on GitHub. Everything from 0.1.0 up is in the entries below.

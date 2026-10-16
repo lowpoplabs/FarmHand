@@ -1898,18 +1898,21 @@ namespace Oxide.Plugins
             liveHand.JobTally.TryGetValue(liveHand.JobGroup, out done);
             liveHand.JobTally[liveHand.JobGroup] = done + 1;
 
-            // The same step sixty times running is worth a line in the log: a job that
-            // never gets done starves everything after it.
-            if (liveHand.JobGroup == liveHand.LastGroup) liveHand.SameGroupRun++;
-            else { liveHand.LastGroup = liveHand.JobGroup; liveHand.SameGroupRun = 1; }
-            liveHand.LastJobName = job.Name ?? "";
+            // The very same job sixty times running is worth a line in the log: a job that
+            // never gets done starves everything after it. (The same *group* in a row means
+            // nothing for a hand whose role covers one group: a stockman only ever does
+            // animals.)
+            string jobName = job.Name ?? "";
+            if (jobName == liveHand.LastJobName) liveHand.SameGroupRun++;
+            else { liveHand.LastJobName = jobName; liveHand.SameGroupRun = 1; }
+            liveHand.LastGroup = liveHand.JobGroup;
             if (liveHand.SameGroupRun % 60 == 0)
             {
                 string carried = null;
                 if (npc.inventory != null)
                     foreach (var item in npc.inventory.containerMain.itemList)
                         if (item != null) carried = (carried == null ? "" : carried + ", ") + item.amount + " " + item.info.shortname;
-                PrintWarning($"{liveHand.Worker.Name} the {liveHand.Worker.Role} has taken {liveHand.SameGroupRun} '{liveHand.JobGroup}' jobs in a row, the last {liveHand.LastJobName} at {MapHelper.PositionToString(job.Spot)} (carrying {carried ?? "nothing"}).");
+                PrintWarning($"{liveHand.Worker.Name} the {liveHand.Worker.Role} has taken the same job {liveHand.SameGroupRun} times running: {liveHand.LastJobName} ('{liveHand.JobGroup}') at {MapHelper.PositionToString(job.Spot)} (carrying {carried ?? "nothing"}).");
             }
 
             if (ShouldWalk(liveHand)) Walk(liveHand, job.Spot, job.Do);
