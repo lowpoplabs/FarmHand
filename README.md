@@ -6,7 +6,7 @@ An [Oxide/uMod](https://umod.org/) plugin for **Rust**. Players hire a farm hand
 base: a worker who is posted inside their tool cupboard's range, paid by the day, who
 harvests, replants, waters and fertilises the planters while they are away.
 
-> **Status: 0.21.2.** Every stage of the plan is in and running on a live server: hiring,
+> **Status: 0.22.0.** Every stage of the plan is in and running on a live server: hiring,
 > crops, the composter, chickens, bees, livestock, the biofuel generator, the kitchen, water
 > runs to the river and deliveries to the Farmers Market. The newest parts (the kitchen's
 > pies and teas, buying livestock) have had little play yet; please report anything odd.
@@ -159,6 +159,13 @@ Notes:
   down is a new box and must be marked again.
 - **Harvest is only taken when an output box has room for it.** With only a fridge marked,
   only food is harvested, because a fridge refuses everything else.
+- **Stock caps:** on the Market tab, "stop producing anything the boxes hold more than"
+  (0 = never) and a per-produce "stop producing at". Once the boxes hold that much of a
+  produce the farm stops milking, shearing, collecting, picking and replanting it until some
+  has gone. Skimmed milk counts as milk.
+- **Takings box:** `/farmhand takings` (or TAKINGS on the Setup tab) marks a box for the
+  market's scrap and whatever the livestock vendor pays, keeping them out of the harvest
+  boxes. Without one they go to the output boxes.
 - **Seed stock:** when a planted crop's seeds and clones in the supply box fall below the
   number kept, one of its produce is eaten for the seed (one fruit, one seed), or a ripe
   plant is cloned when nothing can be eaten for it (hemp, flowers). Set the number to 0 to
