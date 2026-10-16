@@ -4,6 +4,21 @@ All notable changes to the Farm Hand plugin.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.22.0] — Unreleased
+
+Stock caps and a takings box. Deployed to a live server; not yet seen in game.
+
+### Added
+- **Stock caps** — on the Market tab, "Stop producing anything the boxes hold more than"
+  (0 = never, the default) and, per produce, a "stop producing at" number beside "kept at
+  home". Once the boxes hold that much of a produce the farm stops making more of it: cows
+  are not milked, sheep not sheared, eggs and honeycomb not collected, ripe plants of that
+  crop are left on the plant and the crop is not replanted, until some has gone (sold,
+  eaten, fed, baked). Skimmed milk counts as milk.
+- **Takings box** — an optional box role (`/farmhand takings`, or TAKINGS on the Setup tab):
+  scrap from the market and whatever the livestock vendor pays go there instead of the
+  output boxes, so the vendor's metal and fuel stop crowding the harvest.
+
 ## [0.21.2] — 2026-10-13
 
 First public release on GitHub. Everything from 0.1.0 up is in the entries below.

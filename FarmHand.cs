@@ -8,7 +8,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Farm Hand", "LowPopLabs", "0.21.2")]
+    [Info("Farm Hand", "LowPopLabs", "0.22.0")]
     [Description("Hire a farm hand to look after your base's farm. Posted inside your tool cupboard's range for a daily wage, it harvests ripe plants into your boxes, replants from your seed box, waters and fertilises the planters. Wages are paid at the Public Works office, or in scrap by command when that plugin is not installed.")]
     public class FarmHand : RustPlugin
     {
@@ -125,6 +125,9 @@ namespace Oxide.Plugins
                 ["Box.Name.water"] = "water container",
                 ["Box.Name.compost"] = "composter",
                 ["Box.Name.fuel"] = "fuel box",
+                ["Box.Name.takings"] = "takings box",
+                ["Box.Takings"] = "Scrap from the market and the vendor's pay will go into this box.",
+                ["Box.TakingsRemoved"] = "Takings will go into the output boxes again.",
 
                 ["Ui.Title"] = "FARM HAND",
                 ["Ui.Paid"] = "Paid for another {0} ({1} scrap a day for {2} hand(s))",
@@ -212,6 +215,10 @@ namespace Oxide.Plugins
                 ["Ui.BakeBrioche"] = "brioche",
                 ["Ui.LoavesKeep"] = "Loaves to keep in the supply box",
                 ["Ui.BoxFuelHint"] = "optional: extra things to burn",
+                ["Ui.BoxTakings"] = "Takings go to:",
+                ["Ui.BoxTakingsHint"] = "optional: scrap and the vendor's pay, else the output boxes",
+                ["Ui.StockCap"] = "Stop producing anything the boxes hold more than (0 = never)",
+                ["Ui.KeepEachCols"] = "kept at home · stop producing at",
                 ["Ui.DutyLivestock"] = "Tend livestock: feed and water, milk cows, shear sheep, pick up dung",
                 ["Ui.DutyBiofuel"] = "Feed and stir the biofuel generator, collect the fuel",
                 ["Ui.DungShare"] = "Dung to the generator (the rest to the composter)",
@@ -289,11 +296,13 @@ namespace Oxide.Plugins
                 ["Ui.Is.water"] = "water",
                 ["Ui.Is.compost"] = "compost",
                 ["Ui.Is.fuel"] = "fuel",
+                ["Ui.Is.takings"] = "takings",
                 ["Ui.Pick.output"] = "HARVEST",
                 ["Ui.Pick.supply"] = "SUPPLY",
                 ["Ui.Pick.water"] = "WATER",
                 ["Ui.Pick.compost"] = "COMPOST",
                 ["Ui.Pick.fuel"] = "FUEL",
+                ["Ui.Pick.takings"] = "TAKINGS",
                 ["Ui.JobSeconds"] = "Seconds between jobs",
                 ["Ui.Prio.animals"] = "Animals: hatch, eggs, top-ups, petting, milk, wool, honey",
                 ["Ui.Prio.planting"] = "Replant and fertilise",
@@ -518,6 +527,7 @@ namespace Oxide.Plugins
             // The boxes the owner marked (net ids, 0 = none): harvest goes to Output,
             // seeds and fertiliser come from Supply, water from the Water container.
             public ulong Supply, Water, Compost, Fuel;
+            public ulong Takings;      // optional: where market scrap and the vendor's pay go (else the outputs)
 
             [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public List<ulong> Outputs = new List<ulong>();
@@ -531,6 +541,13 @@ namespace Oxide.Plugins
             public int KeepProduce = 20;      // of each produce, kept at home
             [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public Dictionary<string, int> KeepEach = new Dictionary<string, int>();   // shortname -> kept, over KeepProduce
+
+            // Stock caps: once the boxes hold this much of a produce the farm stops making
+            // more of it (no milking, shearing, picking, collecting or replanting of it)
+            // until some has gone. 0 = no cap. Per produce over the general number.
+            public int StockCap = 0;
+            [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
+            public Dictionary<string, int> CapEach = new Dictionary<string, int>();
             public int MarketHours = 2;       // at least this long between runs
             public double LastMarketRun;
             public int Runs, Earned;
@@ -721,6 +738,7 @@ namespace Oxide.Plugins
                 if (farm.Crops == null) farm.Crops = new Dictionary<string, CropSetting>();
                 if (farm.Outputs == null) farm.Outputs = new List<ulong>();
                 if (farm.KeepEach == null) farm.KeepEach = new Dictionary<string, int>();
+                if (farm.CapEach == null) farm.CapEach = new Dictionary<string, int>();
                 if (farm.Hands == null) farm.Hands = new List<Worker>();
                 if (farm.Teas == null) farm.Teas = new List<string>();
                 if (FocusOf(farm.Focus) == null) farm.Focus = "bread";
@@ -1502,6 +1520,7 @@ namespace Oxide.Plugins
             if (farm.Water != 0 && FindWater(farm.Water) == null) { farm.Water = 0; lost.Add("water"); }
             if (farm.Compost != 0 && !(FindBox(farm.Compost) is Composter)) { farm.Compost = 0; lost.Add("compost"); }
             if (farm.Fuel != 0 && FindBox(farm.Fuel) == null) { farm.Fuel = 0; lost.Add("fuel"); }
+            if (farm.Takings != 0 && FindBox(farm.Takings) == null) { farm.Takings = 0; lost.Add("takings"); }
             foreach (var which in lost) Notify(farm.Owner, "Box.Gone." + which);
         }
 
@@ -2027,10 +2046,10 @@ namespace Oxide.Plugins
                     case "animals":   // hatch, eggs, top-ups, petting, milk, wool, honeycomb
                         if (hand.Chickens && (job = CoopJob(liveHand, hand, npc, outputs, supply, liquid, 1)) != null) return job;
                         if (hand.Livestock && (job = TroughJob(liveHand, hand, npc, supply, liquid, compost, outputs, 1)) != null) return job;
-                        if (hand.Honey && (job = HoneyJob(liveHand, npc, outputs)) != null) return job;
+                        if (hand.Honey && (job = HoneyJob(liveHand, hand, npc, outputs)) != null) return job;
                         break;
                     case "planting":
-                        if (hand.Replant && supply != null && (job = PlantingJob(liveHand, hand, npc, supply)) != null) return job;
+                        if (hand.Replant && supply != null && (job = PlantingJob(liveHand, hand, npc, supply, outputs)) != null) return job;
                         if (hand.Fertilise && (supply != null || compost != null) && (job = FertilisingJob(liveHand, hand, npc, supply, compost)) != null) return job;
                         break;
                     case "seeds":     // eat one of a crop's produce for its seed
@@ -2094,7 +2113,9 @@ namespace Oxide.Plugins
                         var into = supply;
                         return new Job { Name = "HarvestJob#1", Spot = Beside(planter, npc), Do = () => CloneForSeeds(hand, npc, mother, into) };
                     }
-                    if (plant.CanPick(npc) && plant.CurrentPickAmount > 0 && AnyRoom(outputs, plant.Properties.pickupItem, plant.CurrentPickAmount))
+                    // Over the cap: the fruit stays on the plant (and the crop is not replanted).
+                    if (plant.CanPick(npc) && plant.CurrentPickAmount > 0 && !AtCap(hand, outputs, plant.Properties.pickupItem.shortname)
+                        && AnyRoom(outputs, plant.Properties.pickupItem, plant.CurrentPickAmount))
                     {
                         var ripe = plant;
                         return new Job { Name = "HarvestJob#2", Spot = Beside(planter, npc), Do = () => HarvestPlant(hand, npc, ripe, outputs) };
@@ -2137,7 +2158,7 @@ namespace Oxide.Plugins
             return null;
         }
 
-        private Job PlantingJob(LiveHand liveHand, FarmData hand, BasePlayer npc, BaseCombatEntity supply)
+        private Job PlantingJob(LiveHand liveHand, FarmData hand, BasePlayer npc, BaseCombatEntity supply, List<BaseCombatEntity> outputs)
         {
             foreach (var planter in liveHand.Planters)
             {
@@ -2145,7 +2166,7 @@ namespace Oxide.Plugins
                 Vector3 slot;
                 Quaternion facing;
                 if (!FreeSlot(planter, out slot, out facing)) continue;
-                var seed = PickSeed(hand, supply);
+                var seed = PickSeed(hand, supply, outputs);
                 if (seed == null) return null;   // nothing to plant anywhere
                 var bed = planter;
                 return new Job { Name = "PlantingJob#1", Spot = Beside(planter, npc), Do = () => PlantSeed(hand, liveHand.Owner, bed, seed, slot, facing) };
@@ -2170,7 +2191,7 @@ namespace Oxide.Plugins
             return null;
         }
 
-        private Job HoneyJob(LiveHand liveHand, BasePlayer npc, List<BaseCombatEntity> outputs)
+        private Job HoneyJob(LiveHand liveHand, FarmData hand, BasePlayer npc, List<BaseCombatEntity> outputs)
         {
             foreach (var hive in liveHand.Hives)
             {
@@ -2178,7 +2199,7 @@ namespace Oxide.Plugins
                 for (int slot = 1; slot < hive.inventory.capacity; slot++)
                 {
                     var comb = hive.inventory.GetSlot(slot);
-                    if (comb == null || comb.amount <= 0 || !AnyRoom(outputs, comb.info, 1)) continue;
+                    if (comb == null || comb.amount <= 0 || AtCap(hand, outputs, comb.info.shortname) || !AnyRoom(outputs, comb.info, 1)) continue;
                     var honeycomb = comb;
                     return new Job { Name = "HoneyJob#1", Spot = Beside(hive, npc), Do = () => MoveSome(honeycomb, outputs) };
                 }
@@ -2349,7 +2370,7 @@ namespace Oxide.Plugins
                     if (!animal.TrustsToHandle(npc)) continue;
 
                     var cow = animal as Rust.Ai.Gen2.Cow;
-                    if (cow != null && cow.MilkDef != null && cow.CanBeMilked(npc) && AnyRoom(outputs, cow.MilkDef, cow.MilkedAmount()))
+                    if (cow != null && cow.MilkDef != null && cow.CanBeMilked(npc) && !AtCap(hand, outputs, cow.MilkDef.shortname) && AnyRoom(outputs, cow.MilkDef, cow.MilkedAmount()))
                     {
                         var theCow = cow;
                         return new Job { Name = "TroughJob#4", Spot = Beside(cow, npc), Do = () => Milk(hand, npc, theCow, outputs) };
@@ -2357,7 +2378,7 @@ namespace Oxide.Plugins
 
                     var sheep = animal as Rust.Ai.Gen2.Sheep;
                     if (sheep != null && sheep.ShearItems != null && sheep.ShearItems.Length > 0 && sheep.ShearItems[0] != null
-                        && sheep.ShearItems[0].itemDef != null && sheep.CanBeSheared(npc) && AnyRoom(outputs, sheep.ShearItems[0].itemDef, 1))
+                        && sheep.ShearItems[0].itemDef != null && sheep.CanBeSheared(npc) && !AtCap(hand, outputs, sheep.ShearItems[0].itemDef.shortname) && AnyRoom(outputs, sheep.ShearItems[0].itemDef, 1))
                     {
                         var theSheep = sheep;
                         return new Job { Name = "TroughJob#5", Spot = Beside(sheep, npc), Do = () => Shear(hand, npc, theSheep, outputs) };
@@ -3384,6 +3405,45 @@ namespace Oxide.Plugins
             return Mathf.Max(0, hand.KeepProduce);
         }
 
+        // The cap on one produce: its own when the owner set one, else the general one; 0 = none.
+        private int CapOf(FarmData hand, string shortname)
+        {
+            int cap;
+            if (hand.CapEach != null && hand.CapEach.TryGetValue(shortname, out cap)) return Mathf.Max(0, cap);
+            return Mathf.Max(0, hand.StockCap);
+        }
+
+        // How much of a produce the boxes hold (pooled, so skimmed milk counts as milk).
+        private static int StockOf(List<BaseCombatEntity> outputs, string shortname)
+        {
+            int total = 0;
+            foreach (var box in outputs)
+            {
+                var inventory = InventoryOf(box);
+                if (inventory == null) continue;
+                foreach (var item in inventory.itemList)
+                    if (item != null && PoolOf(item.info.shortname) == shortname) total += item.amount;
+            }
+            return total;
+        }
+
+        // Enough of this already: the farm stops making it until some has gone.
+        private bool AtCap(FarmData hand, List<BaseCombatEntity> outputs, string shortname)
+        {
+            if (string.IsNullOrEmpty(shortname)) return false;
+            string pool = PoolOf(shortname);
+            int cap = CapOf(hand, pool);
+            return cap > 0 && StockOf(outputs, pool) >= cap;
+        }
+
+        // Where the farm's money goes: the takings box when one is marked, else the outputs.
+        private List<BaseCombatEntity> TakingsOf(FarmData hand)
+        {
+            var box = FindBox(hand.Takings);
+            if (box != null) return new List<BaseCombatEntity> { box };
+            return OutputsOf(hand);
+        }
+
         // Skimmed milk is the lesser form of milk: it counts against the milk kept and is
         // sold first, so the whole milk (and the cream in it) stays home.
         private static string PoolOf(string shortname) => shortname == SkimmedMilkShortname ? MilkShortname : shortname;
@@ -3538,7 +3598,7 @@ namespace Oxide.Plugins
             LiveHand liveHand;
             live.TryGetValue(worker.Id, out liveHand);
             var npc = liveHand != null ? liveHand.Npc : null;
-            var outputs = OutputsOf(hand);
+            var outputs = TakingsOf(hand);   // the takings box when there is one
             int scrap = worker.AwayScrap;
             worker.AwayScrap = 0;
 
@@ -3753,7 +3813,7 @@ namespace Oxide.Plugins
             LiveHand liveHand;
             live.TryGetValue(worker.Id, out liveHand);
             var npc = liveHand != null ? liveHand.Npc : null;
-            var outputs = OutputsOf(hand);
+            var outputs = TakingsOf(hand);   // the takings box when there is one
             Vector3 home;
             TryParsePosition(worker.Home, out home);
 
@@ -4055,7 +4115,7 @@ namespace Oxide.Plugins
                     }
                 }
 
-                if (laid != null && laid.amount > 0 && AnyRoom(outputs, laid.info, 1))
+                if (laid != null && laid.amount > 0 && !AtCap(hand, outputs, laid.info.shortname) && AnyRoom(outputs, laid.info, 1))
                 {
                     var eggs = laid;
                     return new Job { Name = "CoopJob#5", Spot = Beside(coop, npc), Do = () => MoveSome(eggs, outputs) };
@@ -4536,7 +4596,7 @@ namespace Oxide.Plugins
         // crops marked as feed are reckoned at half, so they end up with twice the plants
         // (the animals eat faster than the kitchen bakes).
         // so the planters carry a mix rather than whatever sits first in the supply box.
-        private Item PickSeed(FarmData hand, BaseCombatEntity supply)
+        private Item PickSeed(FarmData hand, BaseCombatEntity supply, List<BaseCombatEntity> outputs)
         {
             var inventory = supply != null ? InventoryOf(supply) : null;
             if (inventory == null) return null;
@@ -4547,6 +4607,7 @@ namespace Oxide.Plugins
                 if (item == null || item.amount <= 0) continue;
                 Crop crop;
                 if (!cropByItem.TryGetValue(item.info.itemid, out crop) || !PlantsCrop(hand, crop)) continue;
+                if (AtCap(hand, outputs, crop.Key)) continue;   // the boxes are full of it
                 int growing = PlantsOf(crop) * (FeedsCrop(hand, crop) ? 1 : 2);
                 if (growing < fewest) { fewest = growing; best = item; }
             }
@@ -4888,6 +4949,7 @@ namespace Oxide.Plugins
             if (which != "water" && hand.Water == id) hand.Water = 0;
             if (which != "compost" && hand.Compost == id) hand.Compost = 0;
             if (which != "fuel" && hand.Fuel == id) hand.Fuel = 0;
+            if (which != "takings" && hand.Takings == id) hand.Takings = 0;
 
             string said = null;
             switch (which)
@@ -4902,6 +4964,10 @@ namespace Oxide.Plugins
                 case "fuel":
                     if (hand.Fuel == id) { hand.Fuel = 0; said = "Box.FuelRemoved"; }
                     else { hand.Fuel = id; said = "Box.Fuel"; }
+                    break;
+                case "takings":
+                    if (hand.Takings == id) { hand.Takings = 0; said = "Box.TakingsRemoved"; }
+                    else { hand.Takings = id; said = "Box.Takings"; }
                     break;
             }
             if (replyTo != null && said != null) Reply(replyTo, said);
@@ -4947,11 +5013,11 @@ namespace Oxide.Plugins
             {
                 foreach (var box in candidates) if (box is Fridge) farm.Outputs.Add(box.net.ID.Value);
                 foreach (var box in candidates)
-                    if (BoxKind(box) == "box" && !(box is Fridge) && box.net.ID.Value != farm.Supply && box.net.ID.Value != farm.Fuel) { farm.Outputs.Add(box.net.ID.Value); break; }
+                    if (BoxKind(box) == "box" && !(box is Fridge) && box.net.ID.Value != farm.Supply && box.net.ID.Value != farm.Fuel && box.net.ID.Value != farm.Takings) { farm.Outputs.Add(box.net.ID.Value); break; }
             }
             if (farm.Supply == 0)
                 foreach (var box in candidates)
-                    if (BoxKind(box) == "box" && !(box is Fridge) && !farm.Outputs.Contains(box.net.ID.Value) && box.net.ID.Value != farm.Fuel) { farm.Supply = box.net.ID.Value; break; }
+                    if (BoxKind(box) == "box" && !(box is Fridge) && !farm.Outputs.Contains(box.net.ID.Value) && box.net.ID.Value != farm.Fuel && box.net.ID.Value != farm.Takings) { farm.Supply = box.net.ID.Value; break; }
             if (farm.Water == 0)
                 foreach (var box in candidates) if (box is LiquidContainer) { farm.Water = box.net.ID.Value; break; }
             if (farm.Compost == 0)
@@ -5267,6 +5333,7 @@ namespace Oxide.Plugins
             BoxLine(ui, panel, ref y, Msg("Ui.BoxWater", uid), BoxName(FindWater(hand.Water), uid), "water", uid);
             BoxLine(ui, panel, ref y, Msg("Ui.BoxCompost", uid), BoxName(FindBox(hand.Compost) as Composter, uid), "compost", uid);
             BoxLine(ui, panel, ref y, Msg("Ui.BoxFuel", uid), BoxName(FindBox(hand.Fuel), uid) ?? Msg("Ui.BoxFuelHint", uid), "fuel", uid);
+            BoxLine(ui, panel, ref y, Msg("Ui.BoxTakings", uid), BoxName(FindBox(hand.Takings), uid) ?? Msg("Ui.BoxTakingsHint", uid), "takings", uid);
 
             // The containers in reach, each with the roles it can take.
             y -= 0.015f;
@@ -5291,7 +5358,7 @@ namespace Oxide.Plugins
                 ulong id = box.net.ID.Value;
                 string kind = BoxKind(box);
                 string tag = hand.Outputs.Contains(id) ? Msg("Ui.Is.output", uid) : hand.Supply == id ? Msg("Ui.Is.supply", uid)
-                    : hand.Water == id ? Msg("Ui.Is.water", uid) : hand.Compost == id ? Msg("Ui.Is.compost", uid) : hand.Fuel == id ? Msg("Ui.Is.fuel", uid) : "";
+                    : hand.Water == id ? Msg("Ui.Is.water", uid) : hand.Compost == id ? Msg("Ui.Is.compost", uid) : hand.Fuel == id ? Msg("Ui.Is.fuel", uid) : hand.Takings == id ? Msg("Ui.Is.takings", uid) : "";
                 ui.Add(new CuiPanel { Image = { Color = ColRow }, RectTransform = { AnchorMin = $"0.03 {bottom}", AnchorMax = $"0.97 {top}" } }, panel);
                 ui.Add(new CuiLabel
                 {
@@ -5303,18 +5370,18 @@ namespace Oxide.Plugins
                     Text = { Text = tag, FontSize = 9, Align = TextAnchor.MiddleLeft, Color = ColTitle },
                     RectTransform = { AnchorMin = $"0.42 {bottom}", AnchorMax = $"0.60 {top}" }
                 }, panel);
-                string[] roles = kind == "water" ? new[] { "water" } : kind == "compost" ? new[] { "compost" } : new[] { "output", "supply", "fuel" };
-                float bx = 0.61f;
+                string[] roles = kind == "water" ? new[] { "water" } : kind == "compost" ? new[] { "compost" } : new[] { "output", "supply", "fuel", "takings" };
+                float bx = 0.58f, bw = roles.Length > 3 ? 0.092f : 0.115f, bs = roles.Length > 3 ? 0.0975f : 0.12f;
                 foreach (var role in roles)
                 {
-                    bool on = role == "output" ? hand.Outputs.Contains(id) : role == "supply" ? hand.Supply == id : role == "water" ? hand.Water == id : role == "compost" ? hand.Compost == id : hand.Fuel == id;
+                    bool on = role == "output" ? hand.Outputs.Contains(id) : role == "supply" ? hand.Supply == id : role == "water" ? hand.Water == id : role == "compost" ? hand.Compost == id : role == "fuel" ? hand.Fuel == id : hand.Takings == id;
                     ui.Add(new CuiButton
                     {
                         Button = { Color = on ? ColOn : ColBtn, Command = $"farmhand.ui box {role} {id}" },
-                        Text = { Text = Msg("Ui.Pick." + role, uid), FontSize = 9, Align = TextAnchor.MiddleCenter, Color = ColText },
-                        RectTransform = { AnchorMin = $"{bx} {bottom + 0.004f}", AnchorMax = $"{bx + 0.115f} {top - 0.004f}" }
+                        Text = { Text = Msg("Ui.Pick." + role, uid), FontSize = 8, Align = TextAnchor.MiddleCenter, Color = ColText },
+                        RectTransform = { AnchorMin = $"{bx} {bottom + 0.004f}", AnchorMax = $"{bx + bw} {top - 0.004f}" }
                     }, panel);
-                    bx += 0.12f;
+                    bx += bs;
                 }
             }
         }
@@ -5588,8 +5655,14 @@ namespace Oxide.Plugins
             SettingLine(ui, panel, ref y, Msg("Ui.MarketHours", uid), Msg("Ui.Hours", uid, hand.MarketHours), "farmhand.ui markethours", 1, uid);
             DutyLine(ui, panel, ref y, Msg("Ui.DutyBuySeeds", uid), hand.BuySeeds, "buyseeds", uid);
             SettingLine(ui, panel, ref y, Msg("Ui.KeepProduce", uid), hand.KeepProduce.ToString(), "farmhand.ui keepproduce", 10, uid);
+            SettingLine(ui, panel, ref y, Msg("Ui.StockCap", uid), hand.StockCap.ToString(), "farmhand.ui stockcap", 50, uid);
             y -= 0.01f;
             Heading(ui, panel, ref y, Msg("Ui.KeepEachHead", uid));
+            ui.Add(new CuiLabel
+            {
+                Text = { Text = Msg("Ui.KeepEachCols", uid), FontSize = 9, Align = TextAnchor.MiddleRight, Color = ColTitle },
+                RectTransform = { AnchorMin = $"0.40 {y}", AnchorMax = $"0.90 {y + 0.036f}" }
+            }, panel);
             Line(ui, panel, ref y, 0.036f, Msg("Ui.KeepEach", uid), ColDim, 9);
 
             var names = new SortedDictionary<string, string>();
@@ -5608,13 +5681,15 @@ namespace Oxide.Plugins
                     names[item.info.displayName.english] = item.info.shortname;
                 }
             }
-            if (hand.KeepEach != null)
-                foreach (var shortname in hand.KeepEach.Keys)
-                {
-                    if (!seen.Add(shortname) || PoolOf(shortname) != shortname || KeptForBaking(hand, shortname)) continue;
-                    var def = ItemManager.FindItemDefinition(shortname);
-                    names[def != null ? def.displayName.english : shortname] = shortname;
-                }
+            var owned = new List<string>();
+            if (hand.KeepEach != null) owned.AddRange(hand.KeepEach.Keys);
+            if (hand.CapEach != null) owned.AddRange(hand.CapEach.Keys);
+            foreach (var shortname in owned)
+            {
+                if (!seen.Add(shortname) || PoolOf(shortname) != shortname || KeptForBaking(hand, shortname)) continue;
+                var def = ItemManager.FindItemDefinition(shortname);
+                names[def != null ? def.displayName.english : shortname] = shortname;
+            }
             if (names.Count == 0) { Line(ui, panel, ref y, 0.05f, Msg("Ui.KeepNone", uid), ColDim, 10); return; }
 
             float rowH = Mathf.Min(0.05f, Mathf.Max(0.025f, (y - 0.02f) / names.Count));
@@ -5622,14 +5697,15 @@ namespace Oxide.Plugins
             {
                 float top = y, bottom = y - rowH + 0.004f;
                 y -= rowH;
-                bool own = hand.KeepEach != null && hand.KeepEach.ContainsKey(pair.Value);
+                bool own = (hand.KeepEach != null && hand.KeepEach.ContainsKey(pair.Value)) || (hand.CapEach != null && hand.CapEach.ContainsKey(pair.Value));
                 ui.Add(new CuiPanel { Image = { Color = ColRow }, RectTransform = { AnchorMin = $"0.03 {bottom}", AnchorMax = $"0.97 {top}" } }, panel);
                 ui.Add(new CuiLabel
                 {
                     Text = { Text = pair.Key, FontSize = 10, Align = TextAnchor.MiddleLeft, Color = own ? ColText : ColDim },
-                    RectTransform = { AnchorMin = $"0.04 {bottom}", AnchorMax = $"0.60 {top}" }
+                    RectTransform = { AnchorMin = $"0.04 {bottom}", AnchorMax = $"0.40 {top}" }
                 }, panel);
-                Stepper(ui, panel, 0.70f, bottom, top, KeepOf(hand, pair.Value).ToString(), $"farmhand.ui keepof {pair.Value}", 10, uid);
+                Stepper(ui, panel, 0.41f, bottom, top, KeepOf(hand, pair.Value).ToString(), $"farmhand.ui keepof {pair.Value}", 10, uid);
+                Stepper(ui, panel, 0.64f, bottom, top, CapOf(hand, pair.Value).ToString(), $"farmhand.ui capof {pair.Value}", 50, uid);
                 if (own)
                     ui.Add(new CuiButton
                     {
@@ -5938,7 +6014,7 @@ namespace Oxide.Plugins
                     var box = FindBox(id);
                     var cupboard = FindCupboard(hand.Cupboard);
                     string kind = BoxKind(box);
-                    bool fits = kind == "water" ? key == "water" : kind == "compost" ? key == "compost" : kind == "box" && (key == "output" || key == "supply" || key == "fuel");
+                    bool fits = kind == "water" ? key == "water" : kind == "compost" ? key == "compost" : kind == "box" && (key == "output" || key == "supply" || key == "fuel" || key == "takings");
                     if (box == null || cupboard == null || !fits || box.GetBuildingPrivilege() != cupboard || !WithinReach(hand, box.transform.position)) return;
                     AssignBox(hand, key, box, null);
                     break;
@@ -6018,6 +6094,15 @@ namespace Oxide.Plugins
                     break;
                 case "keepreset":
                     if (hand.KeepEach != null) hand.KeepEach.Remove(key);
+                    if (hand.CapEach != null) hand.CapEach.Remove(key);
+                    break;
+                case "capof":
+                    if (key.Length == 0 || ItemManager.FindItemDefinition(key) == null) return;
+                    if (hand.CapEach == null) hand.CapEach = new Dictionary<string, int>();
+                    hand.CapEach[key] = Mathf.Clamp(CapOf(hand, key) + delta, 0, 5000);
+                    break;
+                case "stockcap":
+                    hand.StockCap = Mathf.Clamp(hand.StockCap + arg.GetInt(1, 0), 0, 5000);
                     break;
                 case "markethours":
                     hand.MarketHours = Mathf.Clamp(hand.MarketHours + arg.GetInt(1, 0), 1, 48);
@@ -6184,6 +6269,7 @@ namespace Oxide.Plugins
                 case "water":
                 case "compost":
                 case "fuel":
+                case "takings":
                     CmdBox(player, sub);
                     return;
                 case "boxes":
