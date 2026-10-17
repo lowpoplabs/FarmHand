@@ -4,7 +4,7 @@ All notable changes to the Farm Hand plugin.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.22.0] — Unreleased
+## [0.22.0] — 2026-10-17
 
 Stock caps, a takings box, and milk that stacks. Seen on a live server: the caps set and
 working, milk stacking; the takings box not yet tried.
