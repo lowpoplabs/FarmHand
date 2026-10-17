@@ -16,7 +16,7 @@ when that plugin is installed, so the island keeps a single payment desk. Withou
 plugin takes scrap by command and works on its own.
 
 <!-- lpl:links -->
-**[Download v0.21.2](https://github.com/lowpoplabs/FarmHand/releases/latest)** · **Flyer:** [web](https://lowpoplabs.github.io/flyers/FarmHand.html) / [PDF](FarmHand-Flyer.pdf) · **[Changelog](CHANGELOG.md)** · **[Ko-fi](https://ko-fi.com/lowpoplabs)**
+**[Download v0.22.0](https://github.com/lowpoplabs/FarmHand/releases/latest)** · **Flyer:** [web](https://lowpoplabs.github.io/flyers/FarmHand.html) / [PDF](FarmHand-Flyer.pdf) · **[Changelog](CHANGELOG.md)** · **[Ko-fi](https://ko-fi.com/lowpoplabs)**
 <!-- /lpl:links -->
 
 ## How to use (in-game)
