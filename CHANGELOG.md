@@ -6,7 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.22.0] — Unreleased
 
-Stock caps and a takings box. Deployed to a live server; not yet seen in game.
+Stock caps, a takings box, and milk that stacks. Seen on a live server: the caps set and
+working, milk stacking; the takings box not yet tried.
 
 ### Added
 - **Stock caps** — on the Market tab, "Stop producing anything the boxes hold more than"
