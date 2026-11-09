@@ -2407,7 +2407,7 @@ namespace Oxide.Plugins
                 Vis.Entities(liveHand.Home, FarmRadius, animals);
                 foreach (var animal in animals)
                 {
-                    if (animal == null || animal.IsDestroyed || animal.IsDead() || !animal.HasOwner) continue;
+                    if (animal == null || animal.IsDestroyed || animal.IsDead() || !TendedHere(animal, hand.Owner, cupboard)) continue;
                     if (cupboard != null && animal.GetBuildingPrivilege() != cupboard) continue;
                     if (!animal.TrustsToHandle(npc)) continue;
 
@@ -2478,6 +2478,20 @@ namespace Oxide.Plugins
         // threshold). Wild animals that wander in are left alone. The game keeps a hand
         // that is not the owner just short of the full bond (nonOwnerTrustShare, 95%),
         // which is still well past what leading and milking need.
+        // Every animal has its own owner now, and a stranger's can wander into the farm or
+        // be led there. The hand tends the employer's animals and those of anyone authorised
+        // on the farm's cupboard (the line the game draws for housemates), but only the
+        // employer's own enter the herd plan, so nobody else's is ever sold or butchered.
+        private static bool OwnedBy(Rust.Ai.Gen2.LivestockAnimal animal, ulong owner)
+        {
+            return animal.HasOwner && animal.OwnerID == owner;
+        }
+
+        private static bool TendedHere(Rust.Ai.Gen2.LivestockAnimal animal, ulong owner, BuildingPrivlidge cupboard)
+        {
+            return OwnedBy(animal, owner) || (animal.HasOwner && cupboard != null && cupboard.IsAuthed(animal.OwnerID));
+        }
+
         private void Befriend(LiveHand liveHand, BasePlayer npc, BuildingPrivlidge cupboard)
         {
             float tick = Mathf.Max(3f, config.JobSeconds) * Mathf.Max(0f, ConVar.Livestock.familiarityRate);
@@ -2490,7 +2504,7 @@ namespace Oxide.Plugins
                 if (animal == null || animal.IsDestroyed || animal.IsDead()) continue;
                 if (cupboard != null && animal.GetBuildingPrivilege() != cupboard) continue;
                 BuildingPrivlidge home;
-                bool ours = animal.HasOwner || (animal.TryGetHomeCupboard(out home) && home == cupboard);
+                bool ours = TendedHere(animal, liveHand.Owner, cupboard) || (animal.TryGetHomeCupboard(out home) && home == cupboard);
                 if (!ours) continue;
                 float stored;
                 try { stored = animal.StoredSecondsFor(npc.userID); } catch { continue; }
@@ -2508,7 +2522,7 @@ namespace Oxide.Plugins
             foreach (var animal in animals)
             {
                 var cow = animal as Rust.Ai.Gen2.Cow;
-                if (cow == null || cow == first || cow.IsDestroyed || cow.IsDead() || !cow.HasOwner || cow.MilkDef == null) continue;
+                if (cow == null || cow == first || cow.IsDestroyed || cow.IsDead() || !TendedHere(cow, hand.Owner, cupboard) || cow.MilkDef == null) continue;
                 if (cupboard != null && cow.GetBuildingPrivilege() != cupboard) continue;
                 if (!cow.TrustsToHandle(npc) || !cow.CanBeMilked(npc)) continue;
                 if (AtCap(hand, outputs, cow.MilkDef.shortname) || !AnyRoom(outputs, cow.MilkDef, cow.MilkedAmount())) break;
@@ -2612,7 +2626,7 @@ namespace Oxide.Plugins
                     Score = BreedScore(genome),
                     Quality = Rust.Ai.Gen2.LivestockGenome.ExpressedQuality(genome),
                     Inbred = Rust.Ai.Gen2.LivestockGenome.IsInbred(genome),
-                    Male = animal.IsMale, Adult = animal.IsAdult(), Carrying = animal.IsCarrying, Leadable = animal.HasOwner,
+                    Male = animal.IsMale, Adult = animal.IsAdult(), Carrying = animal.IsCarrying, Leadable = OwnedBy(animal, hand.Owner),
                     Marker0 = Rust.Ai.Gen2.LivestockGenome.GetMarker(genome, 0),
                     Marker1 = Rust.Ai.Gen2.LivestockGenome.GetMarker(genome, 1),
                 };

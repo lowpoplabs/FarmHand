@@ -11,8 +11,10 @@ For the November 2026 Rust update, which 0.22.0 no longer compiled against.
 ### Changed
 - The game replaced taming with ownership: an animal now has an owner (bought, claimed at a
   trough, or born to an owned mother) and only an owned cow gives milk. The farm hand now
-  looks after, milks, shears, sells and butchers owned animals where it used to go by
-  tame ones. Animals without an owner are left alone and show as "not tamed" on the Herd tab.
+  goes by the owner where it used to go by tame animals: it milks and shears animals
+  belonging to its employer or to anyone authorised on the farm's cupboard, and only its
+  employer's own animals are bred, sold or butchered. Animals with no owner, and animals
+  belonging to anyone else, show as "not tamed" on the Herd tab.
 - The game keeps anyone but the owner just short of the full bond with an animal (95% by
   default). That is well past what leading and milking need, so the farm hand's work is the
   same; only the owner's animals defend them.
