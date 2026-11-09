@@ -4,6 +4,23 @@ All notable changes to the Farm Hand plugin.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.22.1] — 2026-11-09
+
+For the November 2026 Rust update, which 0.22.0 no longer compiled against.
+
+### Changed
+- The game replaced taming with ownership: an animal now has an owner (bought, claimed at a
+  trough, or born to an owned mother) and only an owned cow gives milk. The farm hand now
+  looks after, milks, shears, sells and butchers owned animals where it used to go by
+  tame ones. Animals without an owner are left alone and show as "not tamed" on the Herd tab.
+- The game keeps anyone but the owner just short of the full bond with an animal (95% by
+  default). That is well past what leading and milking need, so the farm hand's work is the
+  same; only the owner's animals defend them.
+
+### Fixed
+- Calves and lambs bought on a vendor run now belong to the farm's owner, as they do when a
+  player buys one. Without that they would never have given milk.
+
 ## [0.22.0] — 2026-10-17
 
 Stock caps, a takings box, and milk that stacks. Seen on a live server: the caps set and

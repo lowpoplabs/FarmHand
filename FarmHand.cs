@@ -8,7 +8,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Farm Hand", "LowPopLabs", "0.22.0")]
+    [Info("Farm Hand", "LowPopLabs", "0.22.1")]
     [Description("Hire a farm hand to look after your base's farm. Posted inside your tool cupboard's range for a daily wage, it harvests ripe plants into your boxes, replants from your seed box, waters and fertilises the planters. Wages are paid at the Public Works office, or in scrap by command when that plugin is not installed.")]
     public class FarmHand : RustPlugin
     {
@@ -2407,7 +2407,7 @@ namespace Oxide.Plugins
                 Vis.Entities(liveHand.Home, FarmRadius, animals);
                 foreach (var animal in animals)
                 {
-                    if (animal == null || animal.IsDestroyed || animal.IsDead() || !animal.IsLeadable) continue;
+                    if (animal == null || animal.IsDestroyed || animal.IsDead() || !animal.HasOwner) continue;
                     if (cupboard != null && animal.GetBuildingPrivilege() != cupboard) continue;
                     if (!animal.TrustsToHandle(npc)) continue;
 
@@ -2472,9 +2472,12 @@ namespace Oxide.Plugins
         // few seconds, so the farm hand keeps crediting all the way to the full bond,
         // which never fades; stopping at the lead threshold left it hovering just under
         // the line, refused by the vendor and the bucket by turns. The farm's animals are
-        // the tamed ones and those whose home is the owner's cupboard (a calf is born with
-        // its mother's trust at exactly the lead threshold and fades below it unattended).
-        // Wild animals that wander in are left alone.
+        // the owned ones (the November 2026 game replaced taming with an owner: bought,
+        // claimed at a trough or born to an owned mother) and those whose home is the
+        // owner's cupboard (a calf is born with its mother's trust at exactly the lead
+        // threshold). Wild animals that wander in are left alone. The game keeps a hand
+        // that is not the owner just short of the full bond (nonOwnerTrustShare, 95%),
+        // which is still well past what leading and milking need.
         private void Befriend(LiveHand liveHand, BasePlayer npc, BuildingPrivlidge cupboard)
         {
             float tick = Mathf.Max(3f, config.JobSeconds) * Mathf.Max(0f, ConVar.Livestock.familiarityRate);
@@ -2487,7 +2490,7 @@ namespace Oxide.Plugins
                 if (animal == null || animal.IsDestroyed || animal.IsDead()) continue;
                 if (cupboard != null && animal.GetBuildingPrivilege() != cupboard) continue;
                 BuildingPrivlidge home;
-                bool ours = animal.IsLeadable || (animal.TryGetHomeCupboard(out home) && home == cupboard);
+                bool ours = animal.HasOwner || (animal.TryGetHomeCupboard(out home) && home == cupboard);
                 if (!ours) continue;
                 float stored;
                 try { stored = animal.StoredSecondsFor(npc.userID); } catch { continue; }
@@ -2505,7 +2508,7 @@ namespace Oxide.Plugins
             foreach (var animal in animals)
             {
                 var cow = animal as Rust.Ai.Gen2.Cow;
-                if (cow == null || cow == first || cow.IsDestroyed || cow.IsDead() || !cow.IsLeadable || cow.MilkDef == null) continue;
+                if (cow == null || cow == first || cow.IsDestroyed || cow.IsDead() || !cow.HasOwner || cow.MilkDef == null) continue;
                 if (cupboard != null && cow.GetBuildingPrivilege() != cupboard) continue;
                 if (!cow.TrustsToHandle(npc) || !cow.CanBeMilked(npc)) continue;
                 if (AtCap(hand, outputs, cow.MilkDef.shortname) || !AnyRoom(outputs, cow.MilkDef, cow.MilkedAmount())) break;
@@ -2609,7 +2612,7 @@ namespace Oxide.Plugins
                     Score = BreedScore(genome),
                     Quality = Rust.Ai.Gen2.LivestockGenome.ExpressedQuality(genome),
                     Inbred = Rust.Ai.Gen2.LivestockGenome.IsInbred(genome),
-                    Male = animal.IsMale, Adult = animal.IsAdult(), Carrying = animal.IsCarrying, Leadable = animal.IsLeadable,
+                    Male = animal.IsMale, Adult = animal.IsAdult(), Carrying = animal.IsCarrying, Leadable = animal.HasOwner,
                     Marker0 = Rust.Ai.Gen2.LivestockGenome.GetMarker(genome, 0),
                     Marker1 = Rust.Ai.Gen2.LivestockGenome.GetMarker(genome, 1),
                 };
@@ -3995,7 +3998,8 @@ namespace Oxide.Plugins
             animal.Spawn();
             try
             {
-                animal.SetFamiliarity(hand.Owner, ConVar.Livestock.trustToLead, Rust.Ai.Gen2.LivestockAnimal.FamiliarityReason.Purchased);
+                animal.SetOwner(hand.Owner, Rust.Ai.Gen2.LivestockAnimal.OwnerChangeReason.Purchased);
+                animal.SetFamiliarity(hand.Owner, ConVar.Livestock.trustToLead);
                 animal.SetFamiliarity(worker.Id, ConVar.Livestock.trustToLead);
                 foreach (var entry in PlanHerd(liveHand, FindCupboard(hand.Cupboard), hand))
                     if (entry.Animal != animal && entry.Plan != "wild") { animal.TakeHomeFrom(entry.Animal); break; }

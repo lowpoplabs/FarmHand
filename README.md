@@ -6,7 +6,7 @@ An [Oxide/uMod](https://umod.org/) plugin for **Rust**. Players hire a farm hand
 base: a worker who is posted inside their tool cupboard's range, paid by the day, who
 harvests, replants, waters and fertilises the planters while they are away.
 
-> **Status: 0.22.0.** Every stage of the plan is in and running on a live server: hiring,
+> **Status: 0.22.1.** Every stage of the plan is in and running on a live server: hiring,
 > crops, the composter, chickens, bees, livestock, the biofuel generator, the kitchen, water
 > runs to the river and deliveries to the Farmers Market. The newest parts (the kitchen's
 > pies and teas, buying livestock) have had little play yet; please report anything odd.
